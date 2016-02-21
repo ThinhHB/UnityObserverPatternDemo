@@ -48,6 +48,9 @@ public class Marine : MonoBehaviour
 		// fire
 		if (Input.GetMouseButtonDown(0))//left mouse
 		{
+			// raise shoot event
+			this.PostEvent(EventID.OnMarineShoot);
+			// create bullet
 			Instantiate(bulletPrefab, barrelPosition.position, gunTransform.rotation);
 		}
 	}
