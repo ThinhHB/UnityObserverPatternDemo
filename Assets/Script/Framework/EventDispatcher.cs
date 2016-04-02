@@ -62,8 +62,8 @@ namespace DemoObserver
 		#region Init, main component declare
 
 		/// Store all "listener"
-		Dictionary<EventID, Action<Component, object>> _listenersDict
-		= new Dictionary<EventID, Action<Component, object>>();
+		Dictionary<EventID, List<Action<Component, object>>> _listenersDict
+		= new Dictionary<EventID, List<Action<Component, object>>>();
 
 		#endregion
 
@@ -86,12 +86,14 @@ namespace DemoObserver
 			if (_listenersDict.ContainsKey(eventID))
 			{
 				// add callback to our collection
-				_listenersDict[eventID] += callback;
+				_listenersDict[eventID].Add(callback);
 			}
 			else
 			{
-				// add new key
-				_listenersDict.Add(eventID, callback);
+				// add new key-value pair
+				var newList = new List<Action<Component, object>>();
+				newList.Add(callback);
+				_listenersDict.Add(eventID, newList);
 			}
 		}
 
@@ -104,25 +106,33 @@ namespace DemoObserver
 		public void PostEvent (EventID eventID, Component sender, object param = null)
 		{
 			// checking params
-			Common.Assert(eventID != EventID.None, "PostNotification, event = None !!");
+			Common.Assert(eventID != EventID.None, "PostEvent, event = None !!");
 			Common.Assert(sender != null, "PostEvent, event {0}, sender = null !!", eventID.ToString());
 
-			Action<Component, object> actionList;
+			List<Action<Component, object>> actionList;
 			if (_listenersDict.TryGetValue(eventID, out actionList))
 			{
-				try
+				for (int i = 0, amount = actionList.Count; i < amount; i++)
 				{
-					actionList(sender, param);
-				}
-				catch
-				{
-					Common.Warning(false, "Error when post event : " + eventID.ToString());
+					try
+					{
+						actionList[i](sender, param);
+					}
+					catch
+					{
+						Common.LogWarning(this, "Error when PostEvent : {0}, null listener at index : {1}, remove it now", eventID.ToString(), i);
+						// remove listener at i - that cause the exception
+						actionList.RemoveAt(i);
+						// reduce amount and index for the next loop
+						amount--;
+						i--;
+					}
 				}
 			}
 			else
 			{
 				// if not exist, just warning, don't throw exceptoin
-				Common.LogWarning(this, "PostNotification, event : {0}, no listener found !!", eventID.ToString());
+				Common.LogWarning(this, "PostEvent, event : {0}, no listener for this event", eventID.ToString());
 			}
 		}
 
@@ -137,20 +147,45 @@ namespace DemoObserver
 			Common.Assert(callback != null, "RemoveListener, event {0}, callback = null !!", eventID.ToString());
 			Common.Assert(eventID != EventID.None, "AddListener, event = None !!");
 
-			// check if exist listener in distionary, then call delegate
-			if (_listenersDict.ContainsKey(eventID))
+			List<Action<Component, object>> actionList;
+			if (_listenersDict.TryGetValue(eventID, out actionList))
 			{
-				_listenersDict[eventID] -= callback;
-				// if there's no listener remain for this eventID, remove it
-				if (_listenersDict[eventID] == null)
+				if (actionList.Contains(callback))
 				{
-					_listenersDict.Remove(eventID);
+					actionList.Remove(callback);
+					if (actionList.Count == 0)// no listener remain for this event
+					{
+						_listenersDict.Remove(eventID);
+					}
 				}
 			}
 			else
 			{
-				// if not exist, just warning, dont throw exceptoin
+				// the listeners not exist
 				Common.LogWarning(this, "RemoveListener, event : {0}, no listener found", eventID.ToString());
+			}
+		}
+
+
+		/// <summary>
+		/// Clean the ListenerList, remove the listener that have a null target. This happen when an object that
+		/// already be "delete" in Hirachy, but still have a callback remain in listenerList
+		/// </summary>
+		public void RemoveRedundancies()
+		{
+			foreach (var keyPairs in _listenersDict)
+			{
+				var listenerList = keyPairs.Value;
+				for (int amount = listenerList.Count, i = amount -1; i >= 0; i--)
+				{
+					var listener = listenerList[i];
+					// Use Target.Equal(null) instead of Target == null, it won't work
+					if (listener == null || listener.Target.Equals(null))
+					{
+						listenerList.RemoveAt(i);
+						i--;
+					}
+				}
 			}
 		}
 
