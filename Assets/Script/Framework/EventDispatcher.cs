@@ -110,7 +110,14 @@ namespace DemoObserver
 			Action<Component, object> actionList;
 			if (_listenersDict.TryGetValue(eventID, out actionList))
 			{
-				actionList(sender, param);
+				try
+				{
+					actionList(sender, param);
+				}
+				catch
+				{
+					Common.Warning(false, "Error when post event : " + eventID.ToString());
+				}
 			}
 			else
 			{
