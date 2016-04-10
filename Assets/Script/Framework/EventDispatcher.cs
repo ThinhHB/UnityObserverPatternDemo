@@ -118,11 +118,16 @@ namespace DemoObserver
 					{
 						actionList[i](sender, param);
 					}
-					catch
+					catch (Exception e)
 					{
-						Common.LogWarning(this, "Error when PostEvent : {0}, null listener at index : {1}, remove it now", eventID.ToString(), i);
+						Common.LogWarning(this, "Error when PostEvent : {0}, message : {1}", eventID.ToString(), e.Message);
 						// remove listener at i - that cause the exception
 						actionList.RemoveAt(i);
+						if (actionList.Count == 0)
+						{
+							// no listener remain, then delete this key
+							_listenersDict.Remove(eventID);
+						}
 						// reduce amount and index for the next loop
 						amount--;
 						i--;
@@ -183,6 +188,11 @@ namespace DemoObserver
 					if (listener == null || listener.Target.Equals(null))
 					{
 						listenerList.RemoveAt(i);
+					if (listenerList.Count == 0)
+					{
+						// no listener remain, then delete this key
+						_listenersDict.Remove(keyPairs.Key);
+					}
 						i--;
 					}
 				}
