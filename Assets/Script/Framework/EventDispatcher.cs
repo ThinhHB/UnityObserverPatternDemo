@@ -9,7 +9,6 @@ namespace DemoObserver
 	public class EventDispatcher : MonoBehaviour
 	{
 		#region Singleton
-
 		static EventDispatcher s_instance;
 		public static EventDispatcher Instance
 		{
@@ -29,6 +28,10 @@ namespace DemoObserver
 			private set { }
 		}
 
+		public static bool HasInstance()
+		{
+			return s_instance != null;
+		}
 
 		void Awake ()
 		{
@@ -51,22 +54,18 @@ namespace DemoObserver
 		{
 			// reset this static var to null if it's the singleton instance
 			if (s_instance == this)
+			{
+				ClearAllListener();
 				s_instance = null;
+			}
 		}
-
 		#endregion
 
 
-
-
-		#region Init, main component declare
-
+		#region Fields
 		/// Store all "listener"
-		Dictionary<EventID, List<Action<Component, object>>> _listenersDict
-		= new Dictionary<EventID, List<Action<Component, object>>>();
-
+		Dictionary<EventID, Action<object>> _listeners = new Dictionary<EventID, Action<object>>();
 		#endregion
-
 
 
 		#region Add Listeners, Post events, Remove listener
@@ -75,25 +74,24 @@ namespace DemoObserver
 		/// Register to listen for eventID
 		/// </summary>
 		/// <param name="eventID">EventID that object want to listen</param>
-		/// <param name="callback">Callback will be invoked when this eventID be raised</param>
-		public void RegisterListener (EventID eventID, Action<Component, object> callback)
+		/// <param name="callback">Callback will be invoked when this eventID be raised</para	m>
+		public void RegisterListener (EventID eventID, Action<object> callback)
 		{
 			// checking params
 			Common.Assert(callback != null, "AddListener, event {0}, callback = null !!", eventID.ToString());
 			Common.Assert(eventID != EventID.None, "RegisterListener, event = None !!");
 
 			// check if listener exist in distionary
-			if (_listenersDict.ContainsKey(eventID))
+			if (_listeners.ContainsKey(eventID))
 			{
 				// add callback to our collection
-				_listenersDict[eventID].Add(callback);
+				_listeners[eventID] += callback;
 			}
 			else
 			{
 				// add new key-value pair
-				var newList = new List<Action<Component, object>>();
-				newList.Add(callback);
-				_listenersDict.Add(eventID, newList);
+				_listeners.Add(eventID, null);
+				_listeners[eventID] += callback;
 			}
 		}
 
@@ -103,41 +101,25 @@ namespace DemoObserver
 		/// <param name="eventID">EventID.</param>
 		/// <param name="sender">Sender, in some case, the Listener will need to know who send this message.</param>
 		/// <param name="param">Parameter. Can be anything (struct, class ...), Listener will make a cast to get the data</param>
-		public void PostEvent (EventID eventID, Component sender, object param = null)
+		public void PostEvent (EventID eventID, object param = null)
 		{
-			// checking params
-			Common.Assert(eventID != EventID.None, "PostEvent, event = None !!");
-			Common.Assert(sender != null, "PostEvent, event {0}, sender = null !!", eventID.ToString());
-
-			List<Action<Component, object>> actionList;
-			if (_listenersDict.TryGetValue(eventID, out actionList))
+			if (!_listeners.ContainsKey(eventID))
 			{
-				for (int i = 0, amount = actionList.Count; i < amount; i++)
-				{
-					try
-					{
-						actionList[i](sender, param);
-					}
-					catch (Exception e)
-					{
-						Common.LogWarning(this, "Error when PostEvent : {0}, message : {1}", eventID.ToString(), e.Message);
-						// remove listener at i - that cause the exception
-						actionList.RemoveAt(i);
-						if (actionList.Count == 0)
-						{
-							// no listener remain, then delete this key
-							_listenersDict.Remove(eventID);
-						}
-						// reduce amount and index for the next loop
-						amount--;
-						i--;
-					}
-				}
+				Common.Log("No listeners for this event : {0}", eventID);
+				return;
+			}
+
+			// posting event
+			var callbacks = _listeners[eventID];
+			// if there's no listener remain, then do nothing
+			if (callbacks != null)
+			{
+				callbacks(param);
 			}
 			else
 			{
-				// if not exist, just warning, don't throw exceptoin
-				Common.LogWarning(this, "PostEvent, event : {0}, no listener for this event", eventID.ToString());
+				Common.Log("PostEvent {0}, but no listener remain, Remove this key", eventID);
+				_listeners.Remove(eventID);
 			}
 		}
 
@@ -146,71 +128,31 @@ namespace DemoObserver
 		/// </summary>
 		/// <param name="eventID">EventID.</param>
 		/// <param name="callback">Callback.</param>
-		public void RemoveListener (EventID eventID, Action<Component, object> callback)
+		public void RemoveListener (EventID eventID, Action<object> callback)
 		{
 			// checking params
 			Common.Assert(callback != null, "RemoveListener, event {0}, callback = null !!", eventID.ToString());
 			Common.Assert(eventID != EventID.None, "AddListener, event = None !!");
 
-			List<Action<Component, object>> actionList;
-			if (_listenersDict.TryGetValue(eventID, out actionList))
+			if (_listeners.ContainsKey(eventID))
 			{
-				if (actionList.Contains(callback))
-				{
-					actionList.Remove(callback);
-					if (actionList.Count == 0)// no listener remain for this event
-					{
-						_listenersDict.Remove(eventID);
-					}
-				}
+				_listeners[eventID] -= callback;
 			}
 			else
 			{
-				// the listeners not exist
-				Common.LogWarning(this, "RemoveListener, event : {0}, no listener found", eventID.ToString());
+				Common.Warning(false, "RemoveListener, not found key : " + eventID);
 			}
 		}
-
-
-		/// <summary>
-		/// Clean the ListenerList, remove the listener that have a null target. This happen when an object that
-		/// already be "delete" in Hirachy, but still have a callback remain in listenerList
-		/// </summary>
-		public void RemoveRedundancies()
-		{
-			foreach (var keyPairs in _listenersDict)
-			{
-				var listenerList = keyPairs.Value;
-				for (int amount = listenerList.Count, i = amount -1; i >= 0; i--)
-				{
-					var listener = listenerList[i];
-					// Use Target.Equal(null) instead of Target == null, it won't work
-					if (listener == null || listener.Target.Equals(null))
-					{
-						listenerList.RemoveAt(i);
-					if (listenerList.Count == 0)
-					{
-						// no listener remain, then delete this key
-						_listenersDict.Remove(keyPairs.Key);
-					}
-						i--;
-					}
-				}
-			}
-		}
-
 
 		/// <summary>
 		/// Clears all the listener.
 		/// </summary>
 		public void ClearAllListener ()
 		{
-			_listenersDict.Clear();
+			_listeners.Clear();
 		}
-
 		#endregion
 	}
-
 
 
 	#region Extension class
@@ -220,23 +162,21 @@ namespace DemoObserver
 	public static class EventDispatcherExtension
 	{
 		/// Use for registering with EventsManager
-		public static void RegisterListener (this MonoBehaviour sender, EventID eventID, Action<Component, object> callback)
+		public static void RegisterListener (this MonoBehaviour listener, EventID eventID, Action<object> callback)
 		{
 			EventDispatcher.Instance.RegisterListener(eventID, callback);
 		}
 
-
 		/// Post event with param
-		public static void PostEvent (this MonoBehaviour sender, EventID eventID, object param)
+		public static void PostEvent (this MonoBehaviour listener, EventID eventID, object param)
 		{
-			EventDispatcher.Instance.PostEvent(eventID, sender, param);
+			EventDispatcher.Instance.PostEvent(eventID, param);
 		}
-
 
 		/// Post event with no param (param = null)
 		public static void PostEvent (this MonoBehaviour sender, EventID eventID)
 		{
-			EventDispatcher.Instance.PostEvent(eventID, sender, null);
+			EventDispatcher.Instance.PostEvent(eventID, null);
 		}
 	}
 	#endregion

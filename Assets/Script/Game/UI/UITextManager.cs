@@ -35,10 +35,10 @@ public class UITextManager : MonoBehaviour
 	void Start ()
 	{
 		// register to receive events
-		this.RegisterListener(EventID.OnMarineShoot, (sender, param) => OnMarineShoot());
-		this.RegisterListener(EventID.OnBulletHit, (sender, param) => OnBulletHit());
-		this.RegisterListener(EventID.OnHelicopterDead, (sender, param) => OnHelicopterDead());
-		this.RegisterListener(EventID.OnHelicopterEscaped, (sender, param) => OnHelicopterEscaped());
+		this.RegisterListener(EventID.OnMarineShoot, (param) => OnMarineShoot());
+		this.RegisterListener(EventID.OnBulletHit, (param) => OnBulletHit());
+		this.RegisterListener(EventID.OnHelicopterDead, (param) => OnHelicopterDead());
+		this.RegisterListener(EventID.OnHelicopterEscaped, (param) => OnHelicopterEscaped());
 	}
 
 	#endregion
